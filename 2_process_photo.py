@@ -108,7 +108,7 @@ image_path = "photo/Instruments_2.jpg"
 img = cv2.imread(image_path)
 img = cv2.resize(img, (1280, 960))
 
-current_key = 4
+current_key = 2
 
 while True:
 
@@ -141,20 +141,30 @@ while True:
 
     points = np.array(points)
 
-    mean = np.mean(points, axis=0)
-    cov_matrix = np.cov(points, rowvar=False)
-    eigvals, eigvecs = np.linalg.eig(cov_matrix)
+    # === 3. PCA ===
+    pca = PCA(n_components=2)
+    pca.fit(points)
 
-    axis1 = eigvecs[:, 0] * np.sqrt(eigvals[0])  # Направление 1
-    axis2 = eigvecs[:, 1] * np.sqrt(eigvals[1])  # Направление 2
+    center = np.mean(points, axis=0)
+    direction = pca.components_[0]  # главная ось
+
+    # === 4. Визуализация результата ===
+    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+    # Отрисуем PCA-ось
+    length = 100
+    pt1 = (int(center[0]), int(center[1]))
+    pt2 = (int(center[0] + direction[0]*length), int(center[1] + direction[1]*length))
+    cv2.arrowedLine(mask, pt1, pt2, (0, 0, 255), 2)
+
+    # Точка захвата (перпендикуляр к главной оси)
+    perpendicular = np.array([-direction[1], direction[0]])
+    grasp_pt1 = (int(center[0] - perpendicular[0]*20), int(center[1] - perpendicular[1]*20))
+    grasp_pt2 = (int(center[0] + perpendicular[0]*20), int(center[1] + perpendicular[1]*20))
+    cv2.line(mask, grasp_pt1, grasp_pt2, (0, 255, 0), 2)
 
     cv2.imshow("Detection", img2)
     cv2.imshow("Fragment", frag)
-
-    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-    mask = cv2.line(mask, [int(mean[0]), int(mean[1])], [int(mean[0]-axis1[0]), int(mean[1]-axis1[1])], (0, 255, 0), 4) 
-    mask = cv2.line(mask, [int(mean[0]), int(mean[1])], [int(mean[0]-axis2[0]), int(mean[1]-axis2[1])], (255, 0, 0), 4) 
-
     cv2.imshow("Mask", mask)
 
     # plt.scatter(points[:, 0], points[:, 1], alpha=0.2)
