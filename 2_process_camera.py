@@ -27,10 +27,8 @@ dictionary = {'дрель':'drill', 'молоток':'hammer', 'плоскогу
 
 # ==============================================================================
 
-cap = cv2.VideoCapture(1)  # 0 — основная камера, 1 — вторая камера
-
-current_keys = []
-new_command = True
+cap = cv2.VideoCapture(0)  # 0 — основная камера, 1 — вторая камера
+current_key = None
 
 while cap.isOpened():
 
@@ -54,19 +52,16 @@ while cap.isOpened():
 
         for key in dictionary.keys():
             if key in lemmatized_words:
-                if new_command:
-                    current_keys = []
-                    new_command = False
                 v = dictionary[key]
-                ind = coco_classes.index(v)
-                current_keys.append(ind)
+                current_key = coco_classes.index(v)
+                break
   
     # print(f"Названы ключи: {current_keys}")
 
     # ==============================================================================
 
     # Детекция
-    results = model_yolo(frame, imgsz=1280, conf=0.3, iou=0.3, classes=current_keys)
+    results = model_yolo(frame, imgsz=1280, conf=0.3, iou=0.3, classes=current_key)
     # img = cv2.imread(image_path)    
     for result in results:
         for box in result.boxes:
