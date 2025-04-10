@@ -18,6 +18,8 @@ import numpy as np
 
 from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
 
+from sklearn.decomposition import PCA
+
 # ==============================================================================
 
 def messageProcces(morph, dictionary):
@@ -36,9 +38,11 @@ def messageProcces(morph, dictionary):
             return current_key
         
 def detection(image, current_key, imgsz=1280, conf=0.3, iou=0.3):
+    max_conf = 0
+
     image2 = image.copy()
     results = model_yolo(image, imgsz=imgsz, conf=conf, iou=iou, classes=current_key)
-    # img = cv2.imread(image_path)    
+
     for result in results:
         for box in result.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0])  # Преобразуем координаты в int
@@ -47,12 +51,30 @@ def detection(image, current_key, imgsz=1280, conf=0.3, iou=0.3):
 
             # Рисуем рамку
             cv2.rectangle(image2, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            
+            if conf > max_conf:
+                fragment = image2[y1:y2, x1:x2]
+                max_conf = conf
 
             # Добавляем текст с классом и уверенностью
-            # print(f"Class: {coco_classes[cls]}")
             label = f"Class: {coco_classes[cls]}, {conf:.2f}"
             cv2.putText(image2, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    return image2
+    return image2, fragment
+
+def segmentation(model, processor, image, label):
+
+    text = [label]
+
+    inputs = processor(text=text, images=[image]*len(text), return_tensors="pt", padding=True)
+
+    # Predict
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    mask = outputs.logits
+    # print(mask)
+    return mask[0].sigmoid().numpy()
+    
 
 # ==============================================================================
 
@@ -86,7 +108,7 @@ image_path = "photo/Instruments_2.jpg"
 img = cv2.imread(image_path)
 img = cv2.resize(img, (1280, 960))
 
-current_key = None
+current_key = 4
 
 while True:
 
@@ -97,16 +119,52 @@ while True:
 
     # Обработка сообщения
     if ready:
-        current_key = messageProcces(morph, dictionary)
+        new_key = messageProcces(morph, dictionary)
+        if new_key != None:
+            current_key = new_key
   
     # print(f"Названы ключи: {current_keys}")
 
-    # ==============================================================================
-
     # Детекция
-    img2 = detection(image=img, current_key=current_key, imgsz=1280, conf=0.3, iou=0.3)
+    img2, frag = detection(image=img, current_key=current_key, imgsz=1280, conf=0.3, iou=0.3)
+
+    # Сегментация
+    mask = segmentation(model=model_seg, processor=processor_seg, image=frag, label="tool")
+    mask = mask / np.max(mask)
+    mask[mask >= 0.1] = 1
+
+    points = []
+    for i in range(mask.shape[0]):
+        for j in range(mask.shape[1]):
+            if mask[i,j] == 1:
+                points.append([i,j])
+
+    points = np.array(points)
+
+    mean = np.mean(points, axis=0)
+    cov_matrix = np.cov(points, rowvar=False)
+    eigvals, eigvecs = np.linalg.eig(cov_matrix)
+
+    axis1 = eigvecs[:, 0] * np.sqrt(eigvals[0])  # Направление 1
+    axis2 = eigvecs[:, 1] * np.sqrt(eigvals[1])  # Направление 2
 
     cv2.imshow("Detection", img2)
+    cv2.imshow("Fragment", frag)
+
+    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+    mask = cv2.line(mask, [int(mean[0]), int(mean[1])], [int(mean[0]-axis1[0]), int(mean[1]-axis1[1])], (0, 255, 0), 4) 
+    mask = cv2.line(mask, [int(mean[0]), int(mean[1])], [int(mean[0]-axis2[0]), int(mean[1]-axis2[1])], (255, 0, 0), 4) 
+
+    cv2.imshow("Mask", mask)
+
+    # plt.scatter(points[:, 0], points[:, 1], alpha=0.2)
+    # plt.quiver(mean[0], mean[1], axis1[0], axis1[1], color='r', scale=3)
+    # plt.quiver(mean[0], mean[1], axis2[0], axis2[1], color='b', scale=3)
+    # # plt.gca().invert_yaxis()  # Инверсия оси Y, так как изображения идут сверху вниз
+    # plt.show()
+
+    # plt.quiver(mean[0], mean[1], axis1[0], axis1[1], color='r', scale=3)
+    # plt.quiver(mean[0], mean[1], axis2[0], axis2[1], color='b', scale=3)
 
     cv2.waitKey(1)
 
