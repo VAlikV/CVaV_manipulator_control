@@ -76,7 +76,7 @@ def segmentation(model, processor, image, label):
     mask = mask[0].sigmoid().numpy()
 
     mask = mask / np.max(mask)
-    mask[mask >= 0.1] = 1
+    mask[mask >= 0.2] = 1
     
     return mask
 
@@ -159,7 +159,7 @@ while True:
     img2, frag = detection(image=img, current_key=current_key, imgsz=1280, conf=0.3, iou=0.3)
 
     # Сегментация
-    mask = segmentation(model=model_seg, processor=processor_seg, image=frag, label="tool")
+    mask = segmentation(model=model_seg, processor=processor_seg, image=frag, label="a tool grip")
     
     # PCA
     center, pt1, pt2, grasp_pt1, grasp_pt2 = calcPCA(mask=mask)
