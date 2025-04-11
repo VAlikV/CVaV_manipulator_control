@@ -73,9 +73,39 @@ def segmentation(model, processor, image, label):
 
     mask = outputs.logits
     # print(mask)
-    return mask[0].sigmoid().numpy()
-    
+    mask = mask[0].sigmoid().numpy()
 
+    mask = mask / np.max(mask)
+    mask[mask >= 0.1] = 1
+    
+    return mask
+
+def calcPCA(mask):
+    points = []
+    for i in range(mask.shape[0]):
+        for j in range(mask.shape[1]):
+            if mask[i,j] == 1:
+                points.append([i,j])
+
+    points = np.array(points)
+
+    pca = PCA(n_components=2)
+    pca.fit(points)
+
+    center = np.mean(points, axis=0)
+    direction = pca.components_[0]  # главная ось
+
+    length = 200
+    pt1 = (int(center[0]), int(center[1]))
+    pt2 = (int(center[0] + direction[0]*length), int(center[1] + direction[1]*length))
+    
+    # Точка захвата (перпендикуляр к главной оси)
+    perpendicular = np.array([-direction[1], direction[0]])
+    grasp_pt1 = (int(center[0] - perpendicular[0]*20), int(center[1] - perpendicular[1]*20))
+    grasp_pt2 = (int(center[0] + perpendicular[0]*20), int(center[1] + perpendicular[1]*20))
+
+    return center, pt1, pt2, grasp_pt1, grasp_pt2
+    
 # ==============================================================================
 
 UDP_IP = "127.0.0.1"
@@ -108,7 +138,7 @@ image_path = "photo/Instruments_2.jpg"
 img = cv2.imread(image_path)
 img = cv2.resize(img, (1280, 960))
 
-current_key = 2
+current_key = 3
 
 while True:
 
@@ -130,37 +160,14 @@ while True:
 
     # Сегментация
     mask = segmentation(model=model_seg, processor=processor_seg, image=frag, label="tool")
-    mask = mask / np.max(mask)
-    mask[mask >= 0.1] = 1
+    
+    # PCA
+    center, pt1, pt2, grasp_pt1, grasp_pt2 = calcPCA(mask=mask)
+    
+    # Визуализация
 
-    points = []
-    for i in range(mask.shape[0]):
-        for j in range(mask.shape[1]):
-            if mask[i,j] == 1:
-                points.append([i,j])
-
-    points = np.array(points)
-
-    # === 3. PCA ===
-    pca = PCA(n_components=2)
-    pca.fit(points)
-
-    center = np.mean(points, axis=0)
-    direction = pca.components_[0]  # главная ось
-
-    # === 4. Визуализация результата ===
     mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-
-    # Отрисуем PCA-ось
-    length = 100
-    pt1 = (int(center[0]), int(center[1]))
-    pt2 = (int(center[0] + direction[0]*length), int(center[1] + direction[1]*length))
     cv2.arrowedLine(mask, pt1, pt2, (0, 0, 255), 2)
-
-    # Точка захвата (перпендикуляр к главной оси)
-    perpendicular = np.array([-direction[1], direction[0]])
-    grasp_pt1 = (int(center[0] - perpendicular[0]*20), int(center[1] - perpendicular[1]*20))
-    grasp_pt2 = (int(center[0] + perpendicular[0]*20), int(center[1] + perpendicular[1]*20))
     cv2.line(mask, grasp_pt1, grasp_pt2, (0, 255, 0), 2)
 
     cv2.imshow("Detection", img2)
