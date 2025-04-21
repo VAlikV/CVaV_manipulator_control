@@ -3,29 +3,13 @@ import queue
 import sounddevice as sd
 import vosk
 import json
-
 import cv2
 from ultralytics import YOLO
 import pymorphy3
-import select
-import time
-
 import torch
-from torch.nn.functional import interpolate
-
-from PIL import Image
-
-from IPython.display import display
-import matplotlib.pyplot as plt
-from matplotlib import gridspec
-
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
-
 from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
-
 from sklearn.decomposition import PCA
-
 import socket
 import threading
 
@@ -39,6 +23,9 @@ morph = pymorphy3.MorphAnalyzer(lang='ru')
 
 model_seg = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
 processor_seg = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model_seg.to(device)
 
 # ==============================================================================
 
@@ -55,6 +42,7 @@ msg_queue = queue.Queue()
 text_t = "плоскогубцы"
 old_text = "плоскогубцы"
 msg_queue.put(text_t)
+
 # ==============================================================================
 
 def messageProcces(text, morph, dictionary, current_key):
@@ -101,16 +89,20 @@ def segmentation(model, processor, image, label):
 
     inputs = processor(text=text, images=[image]*len(text), return_tensors="pt", padding=True)
 
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+
     # Predict
     with torch.no_grad():
         outputs = model(**inputs)
 
     mask = outputs.logits
     # print(mask)
-    mask = mask[0].sigmoid().numpy()
+    mask = mask[0].sigmoid().cpu().numpy()
+    # mask = mask[0].sigmoid().numpy()
 
     mask = mask / np.max(mask)
-    mask[mask >= 0.2] = 1
+    mask[mask >= 0.05] = 1
+    mask[mask <= 0.05] = 0
     
     return mask
 
@@ -130,13 +122,21 @@ def calcPCA(mask):
     direction = pca.components_[0]  # главная ось
 
     length = 200
-    pt1 = (int(center[0]), int(center[1]))
-    pt2 = (int(center[0] + direction[0]*length), int(center[1] + direction[1]*length))
+    # pt1 = (int(center[0]), int(center[1]))
+    # pt2 = (int(center[0] + direction[0]*length), int(center[1] + direction[1]*length))
+    
+    # # Точка захвата (перпендикуляр к главной оси)
+    # perpendicular = np.array([-direction[1], direction[0]])
+    # grasp_pt1 = (int(center[0] - perpendicular[0]*20), int(center[1] - perpendicular[1]*20))
+    # grasp_pt2 = (int(center[0] + perpendicular[0]*20), int(center[1] + perpendicular[1]*20))
+
+    pt1 = (int(center[1]), int(center[0]))
+    pt2 = (int(center[1] + direction[1]*length), int(center[0] + direction[0]*length))
     
     # Точка захвата (перпендикуляр к главной оси)
-    perpendicular = np.array([-direction[1], direction[0]])
-    grasp_pt1 = (int(center[0] - perpendicular[0]*20), int(center[1] - perpendicular[1]*20))
-    grasp_pt2 = (int(center[0] + perpendicular[0]*20), int(center[1] + perpendicular[1]*20))
+    perpendicular = np.array([-direction[0], direction[1]])
+    grasp_pt1 = (int(center[1] - perpendicular[1]*20), int(center[0] - perpendicular[0]*20))
+    grasp_pt2 = (int(center[1] + perpendicular[1]*20), int(center[0] + perpendicular[0]*20))
 
     print("grasp_pt1: ", grasp_pt1)
     print("grasp_pt2: ", grasp_pt2)
@@ -204,7 +204,9 @@ def fullControl(img, text, current_key):
     cv2.imshow("Fragment", frag)
     cv2.imshow("Mask", mask)
 
-    cv2.waitKey(1)   
+    cv2.waitKey(1) 
+
+    return current_key  
 
 # ==============================================================================
 # ==============================================================================
@@ -265,9 +267,7 @@ while True:
         text_t = msg_queue.get_nowait()
         if text_t == "":
             text_t = old_text
-        fullControl(img, text_t, current_key)
+        current_key = fullControl(img, text_t, current_key)
     except queue.Empty:
         text_t = old_text
-        fullControl(img, text_t, current_key)
-
-    
+        current_key = fullControl(img, text_t, current_key)
