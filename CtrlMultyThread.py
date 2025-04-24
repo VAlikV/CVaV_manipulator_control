@@ -5,10 +5,16 @@ import socket
 from collections import OrderedDict
 import time
 
-from classes import VideoProcess, VoiceProcess, CameraProcess
+from classes import VideoProcess, VoiceProcess, CameraProcess, UDPSender
 
 # ==============================================================================
 # ==============================================================================
+
+init_position = [0.55, 0.0, 0.63, 1.0, 0.0, 0.0,
+                                0.0, -1.0, 0.0,
+                                0.0, 0.0, -1.0]
+x = init_position[0]
+y = init_position[1]
 
 msg_queue = queue.Queue()
 
@@ -16,9 +22,10 @@ text_t = "молоток"
 old_text = "молоток"
 msg_queue.put(text_t)
 
-video = VideoProcess()
+video = VideoProcess((x,y))
 audio = VoiceProcess("models/vosk-model-small-ru-0.22")
-camera = CameraProcess("0.0.0.0", 12345)
+# camera = CameraProcess("0.0.0.0", 12345)
+udp = UDPSender("192.168.1.3", 8083)
 
 # ==============================================================================
 # ==============================================================================
@@ -37,6 +44,8 @@ threading.Thread(target=voice, args=(), daemon=True).start()
 # image_path = "photo/inst2.jpg"
 # img = cv2.imread(image_path)
 # img = cv2.resize(img, (640, 360))
+
+udp.sendMessage("192.168.1.2", 8082, init_position)
 
 cap = cv2.VideoCapture(0)  # 0 — основная камера, 1 — вторая камера
 
@@ -58,7 +67,15 @@ while cap.isOpened():
         if text_t == "":
             text_t = old_text
         video.loop(img, text_t)
+        point = video.point_task_space_
+        init_position[0] = point[0]
+        init_position[1] = point[1]
+        udp.sendMessage("192.168.1.2", 8082, init_position)
 
     except queue.Empty:
         text_t = old_text
         video.loop(img, text_t)
+        point = video.point_task_space_
+        init_position[0] = point[0]
+        init_position[1] = point[1]
+        udp.sendMessage("192.168.1.2", 8082, init_position)

@@ -63,8 +63,11 @@ class VideoProcess:
 
 # ==============================================================================
 
-    def __init__(self):
+    def __init__(self, point):
         self.loadModels()
+
+        self.point_task_space_ = [0,0]
+        self.point_task_space_[0], self.point_task_space_[1] = point
 
         self.current_key_ = 3
         self.coco_classes_ = ['drill', 'hammer', 'pliers', 'screwdriver', 'wrench']
@@ -180,33 +183,29 @@ class VideoProcess:
     
 # ==============================================================================
 
-    def control(self, bb_center, xe_ts, ye_ts, d_vert = 960, d_hor = 1280):
+    def control(self, point, x_task_space, y_task_space, d_vert = 960, d_hor = 1280):
 
-        xe_p, ye_p = d_vert//2, d_hor//2
+        x_frame_center, y_frame_center = d_hor//2, d_vert//2
 
-        x_old, y_old = bb_center
-        x_goal_p, y_goal_p = d_vert - y_old, d_hor - x_old
+        x_frame_target, y_frame_target = point
 
-        print("x_goal_p, y_goal_p: ", x_goal_p, y_goal_p)
+        x_frame_delta = x_frame_target - x_frame_center
+        y_frame_delta = y_frame_target - y_frame_center
 
-        Kx = xe_ts / xe_p
-        Ky = ye_ts / ye_p
+        print(f"x_frame_delta {x_frame_delta}, y_frame_delta: {y_frame_delta}")
 
-        # delta_x_p = x_goal_p - xe_p
-        # delta_y_p = y_goal_p - ye_p
+        Kx = 10e3
+        Ky = 10e3
 
-        # delta_x_ts = Kx * delta_x_p
-        # delta_y_ts = Ky * delta_y_p
+        x_task_space_delta = x_frame_delta/Kx
+        y_task_space_delta = y_frame_delta/Ky
 
-        # x_g_ts = xe_ts + delta_x_ts
-        # y_g_ts = ye_ts + delta_y_ts
+        x_task_space -= y_task_space_delta
+        y_task_space -= x_task_space_delta
 
-        x_g_ts = Kx * x_goal_p
-        y_g_ts = Ky * y_goal_p
+        print(f"x_task_space {x_task_space}, y_task_space: {y_task_space}")
 
-        print("x_g_ts, y_g_ts: ", x_g_ts, y_g_ts)
-
-        return x_g_ts, y_g_ts
+        return x_task_space, y_task_space
 
 # ==============================================================================
 
@@ -229,7 +228,12 @@ class VideoProcess:
             # point = (bb_point[0]+center[1], bb_point[1]+center[0])
             point = (bb_point[0] + fragment.shape[1] - Py*center[1], bb_point[1] + Px*center[0])
 
-            x_g_ts, y_g_ts = self.control(point, xe_ts=1, ye_ts=1, d_vert = 360, d_hor = 640)
+            x_g_ts, y_g_ts = self.control(point, x_task_space=self.point_task_space_[0], y_task_space=self.point_task_space_[1], d_vert = 360, d_hor = 640)
+            print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            print(f"X: {x_g_ts}, Y: {y_g_ts}")
+            print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
+            self.point_task_space_ = (x_g_ts, y_g_ts)
 
             mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
             cv2.arrowedLine(mask, pt1, pt2, (0, 0, 255), 2)
@@ -292,3 +296,26 @@ class CameraProcess:
 
             except socket.timeout:
                 pass
+
+# ==============================================================================
+# ==============================================================================
+# ==============================================================================
+
+class UDPSender:
+    def __init__(self, own_ip = "192.168.1.3", own_port = 8083):
+        self.sock_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock_.bind((own_ip, own_port))
+        self.sock_.settimeout(1.0)
+
+    def array2str(self, arr):
+        msg = "["
+        for i in arr:
+            msg = msg + str(i) + ","
+        msg = msg[:-1] + "]"
+        return msg
+    
+    def sendMessage(self, ip, port, array):
+        msg = self.array2str(array)
+        print(msg)
+        b = msg.encode('utf-8')
+        self.sock_.sendto(b, (ip, port))
