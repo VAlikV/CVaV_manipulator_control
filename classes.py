@@ -190,9 +190,9 @@ class VideoProcess:
         x_frame_target, y_frame_target = point
 
         x_frame_delta = x_frame_target - x_frame_center
-        y_frame_delta = y_frame_target - y_frame_center
+        y_frame_delta = y_frame_target - (y_frame_center + 50)
 
-        print(f"x_frame_delta {x_frame_delta}, y_frame_delta: {y_frame_delta}")
+        # print(f"x_frame_delta {x_frame_delta}, y_frame_delta: {y_frame_delta}")
 
         Kx = 5000
         Ky = 5000
@@ -200,10 +200,13 @@ class VideoProcess:
         x_task_space_delta = x_frame_delta/Kx
         y_task_space_delta = y_frame_delta/Ky
 
-        x_task_space -= y_task_space_delta
-        y_task_space -= x_task_space_delta
+        if abs(x_task_space_delta) >= 0.003:
+            y_task_space -= x_task_space_delta
 
-        print(f"x_task_space {x_task_space}, y_task_space: {y_task_space}")
+        if abs(y_task_space_delta) >= 0.003:
+            x_task_space -= y_task_space_delta
+
+        # print(f"x_task_space {x_task_space}, y_task_space: {y_task_space}")
 
         return x_task_space, y_task_space
 
