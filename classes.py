@@ -66,7 +66,7 @@ class VideoProcess:
     def __init__(self, point):
         self.loadModels()
 
-        self.point_task_space_ = [0,0]
+        self.point_task_space_ = [0.55, 0.0]
         self.point_task_space_[0], self.point_task_space_[1] = point
 
         self.current_key_ = 3
@@ -194,8 +194,8 @@ class VideoProcess:
 
         print(f"x_frame_delta {x_frame_delta}, y_frame_delta: {y_frame_delta}")
 
-        Kx = 10e3
-        Ky = 10e3
+        Kx = 5000
+        Ky = 5000
 
         x_task_space_delta = x_frame_delta/Kx
         y_task_space_delta = y_frame_delta/Ky
@@ -226,7 +226,7 @@ class VideoProcess:
             Py = fragment.shape[1] / mask.shape[1]
 
             # point = (bb_point[0]+center[1], bb_point[1]+center[0])
-            point = (bb_point[0] + fragment.shape[1] - Py*center[1], bb_point[1] + Px*center[0])
+            point = (bb_point[0] + Py*center[1], bb_point[1] + Px*center[0])
 
             x_g_ts, y_g_ts = self.control(point, x_task_space=self.point_task_space_[0], y_task_space=self.point_task_space_[1], d_vert = 360, d_hor = 640)
             print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")

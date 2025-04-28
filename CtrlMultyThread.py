@@ -10,11 +10,11 @@ from classes import VideoProcess, VoiceProcess, CameraProcess, UDPSender
 # ==============================================================================
 # ==============================================================================
 
-init_position = [0.55, 0.0, 0.63, 1.0, 0.0, 0.0,
+init_position = [0, 0.55, 0.0, 0.63, 1.0, 0.0, 0.0,
                                 0.0, -1.0, 0.0,
                                 0.0, 0.0, -1.0]
-x = init_position[0]
-y = init_position[1]
+x = init_position[1]
+y = init_position[2]
 
 msg_queue = queue.Queue()
 
@@ -25,7 +25,7 @@ msg_queue.put(text_t)
 video = VideoProcess((x,y))
 audio = VoiceProcess("models/vosk-model-small-ru-0.22")
 # camera = CameraProcess("0.0.0.0", 12345)
-udp = UDPSender("192.168.1.3", 8083)
+udp = UDPSender("192.168.1.2", 8083)
 
 # ==============================================================================
 # ==============================================================================
@@ -45,7 +45,7 @@ threading.Thread(target=voice, args=(), daemon=True).start()
 # img = cv2.imread(image_path)
 # img = cv2.resize(img, (640, 360))
 
-udp.sendMessage("192.168.1.2", 8082, init_position)
+udp.sendMessage("192.168.1.3", 8082, init_position)
 
 cap = cv2.VideoCapture(0)  # 0 — основная камера, 1 — вторая камера
 
@@ -68,14 +68,20 @@ while cap.isOpened():
             text_t = old_text
         video.loop(img, text_t)
         point = video.point_task_space_
-        init_position[0] = point[0]
-        init_position[1] = point[1]
-        udp.sendMessage("192.168.1.2", 8082, init_position)
+        init_position[0] += 1
+        if init_position[0] == 1e6 + 1:
+            init_position[0] = 0
+        init_position[1] = point[0]
+        init_position[2] = point[1]
+        udp.sendMessage("192.168.1.3", 8082, init_position)
 
     except queue.Empty:
         text_t = old_text
         video.loop(img, text_t)
         point = video.point_task_space_
-        init_position[0] = point[0]
-        init_position[1] = point[1]
-        udp.sendMessage("192.168.1.2", 8082, init_position)
+        init_position[0] += 1
+        if init_position[0] == 1e6 + 1:
+            init_position[0] = 0
+        init_position[1] = point[0]
+        init_position[2] = point[1]
+        udp.sendMessage("192.168.1.3", 8082, init_position)
