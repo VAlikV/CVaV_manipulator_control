@@ -63,11 +63,10 @@ class VideoProcess:
 
 # ==============================================================================
 
-    def __init__(self, point):
+    def __init__(self):
         self.loadModels()
 
-        self.point_task_space_ = [0.55, 0.0]
-        self.point_task_space_[0], self.point_task_space_[1] = point
+        self.delta_ = [0.0, 0.0]
 
         self.current_key_ = 3
         self.coco_classes_ = ['drill', 'hammer', 'pliers', 'screwdriver', 'wrench']
@@ -197,18 +196,10 @@ class VideoProcess:
         Kx = 5000
         Ky = 5000
 
-        x_task_space_delta = x_frame_delta/Kx
-        y_task_space_delta = y_frame_delta/Ky
+        y_task_space_delta = x_frame_delta/Kx
+        x_task_space_delta = y_frame_delta/Ky
 
-        if abs(x_task_space_delta) >= 0.003:
-            y_task_space -= x_task_space_delta
-
-        if abs(y_task_space_delta) >= 0.003:
-            x_task_space -= y_task_space_delta
-
-        # print(f"x_task_space {x_task_space}, y_task_space: {y_task_space}")
-
-        return x_task_space, y_task_space
+        return x_task_space_delta, y_task_space_delta
 
 # ==============================================================================
 
@@ -231,12 +222,12 @@ class VideoProcess:
             # point = (bb_point[0]+center[1], bb_point[1]+center[0])
             point = (bb_point[0] + Py*center[1], bb_point[1] + Px*center[0])
 
-            x_g_ts, y_g_ts = self.control(point, x_task_space=self.point_task_space_[0], y_task_space=self.point_task_space_[1], d_vert = 360, d_hor = 640)
+            dx, dy = self.control(point, d_vert = 360, d_hor = 640)
             print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-            print(f"X: {x_g_ts}, Y: {y_g_ts}")
+            print(f"dX: {dx}, dY: {dy}")
             print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 
-            self.point_task_space_ = (x_g_ts, y_g_ts)
+            self.delta_ = [dx, dy]
 
             mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
             cv2.arrowedLine(mask, pt1, pt2, (0, 0, 255), 2)

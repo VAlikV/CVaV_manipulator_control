@@ -13,8 +13,6 @@ from classes import VideoProcess, VoiceProcess, CameraProcess, UDPSender
 init_position = [0, 0.55, 0.0, 0.63, 1.0, 0.0, 0.0,
                                 0.0, -1.0, 0.0,
                                 0.0, 0.0, -1.0]
-x = init_position[1]
-y = init_position[2]
 
 msg_queue = queue.Queue()
 
@@ -22,7 +20,7 @@ text_t = "молоток"
 old_text = "молоток"
 msg_queue.put(text_t)
 
-video = VideoProcess((x,y))
+video = VideoProcess()
 audio = VoiceProcess("models/vosk-model-small-ru-0.22")
 # camera = CameraProcess("0.0.0.0", 12345)
 udp = UDPSender("192.168.1.2", 8083)
@@ -51,11 +49,6 @@ cap = cv2.VideoCapture(0)  # 0 — основная камера, 1 — втор
 
 while cap.isOpened(): 
 
-    # f = camera.takeFrame()
-    # cv2.imshow("ESP32-CAM Live", f)
-    # if cv2.waitKey(1) == 27:  # ESC — выход
-    #     break
-
     ret, img = cap.read()  # Считываем кадр
     if not ret:
         break
@@ -66,22 +59,28 @@ while cap.isOpened():
         text_t = msg_queue.get_nowait()
         if text_t == "":
             text_t = old_text
+
         video.loop(img, text_t)
-        point = video.point_task_space_
+        delta = video.delta_
+
         init_position[0] += 1
         if init_position[0] == 1e6 + 1:
             init_position[0] = 0
-        init_position[1] = point[0]
-        init_position[2] = point[1]
+
+        init_position[1] -= delta[0]
+        init_position[2] -= delta[0]
         udp.sendMessage("192.168.1.3", 8082, init_position)
 
     except queue.Empty:
         text_t = old_text
+
         video.loop(img, text_t)
-        point = video.point_task_space_
+        point = video.delta_
+
         init_position[0] += 1
         if init_position[0] == 1e6 + 1:
             init_position[0] = 0
-        init_position[1] = point[0]
-        init_position[2] = point[1]
+
+        init_position[1] -= delta[0]
+        init_position[2] -= delta[0]
         udp.sendMessage("192.168.1.3", 8082, init_position)
