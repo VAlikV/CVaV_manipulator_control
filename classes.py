@@ -67,6 +67,8 @@ class VideoProcess:
         self.loadModels()
 
         self.delta_ = [0.0, 0.0]
+        self.position_done_ = False
+        self.N = 0
 
         self.current_key_ = 3
         self.coco_classes_ = ['drill', 'hammer', 'pliers', 'screwdriver', 'wrench']
@@ -182,14 +184,14 @@ class VideoProcess:
     
 # ==============================================================================
 
-    def control(self, point, x_task_space, y_task_space, d_vert = 960, d_hor = 1280):
+    def control(self, point, d_vert = 960, d_hor = 1280):
 
         x_frame_center, y_frame_center = d_hor//2, d_vert//2
 
         x_frame_target, y_frame_target = point
 
         x_frame_delta = x_frame_target - x_frame_center
-        y_frame_delta = y_frame_target - (y_frame_center + 50)
+        y_frame_delta = y_frame_target - (y_frame_center + 60)
 
         # print(f"x_frame_delta {x_frame_delta}, y_frame_delta: {y_frame_delta}")
 
@@ -223,9 +225,19 @@ class VideoProcess:
             point = (bb_point[0] + Py*center[1], bb_point[1] + Px*center[0])
 
             dx, dy = self.control(point, d_vert = 360, d_hor = 640)
-            print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-            print(f"dX: {dx}, dY: {dy}")
-            print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
+            if abs(dx) <= 0.003:
+                dx = 0
+
+            if abs(dy) <= 0.003:
+                dy = 0
+
+            if (abs(dx) <= 0.003) and (abs(dy) <= 0.003):
+                self.N += 1
+                if self.N == 7:
+                    self.position_done_ = True
+            # else:
+                # self.position_done_ = True
 
             self.delta_ = [dx, dy]
 
@@ -237,6 +249,8 @@ class VideoProcess:
 
             cv2.imshow("Mask", mask)
             cv2.imshow("Fragment", fragment)
+        else:
+            self.delta_ = [0, 0]
 
         cv2.imshow("Detection", image2)
 
