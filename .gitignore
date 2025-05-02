@@ -2,3 +2,4 @@
 /.vscode
 /Detection
 /.venv
+/__pycache__
