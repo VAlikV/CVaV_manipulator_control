@@ -94,7 +94,7 @@ class ManipulatorControl:
         self.final_height = 0.29
 
         self.current_key_ = 3
-        # self.coco_classes_ = ['drill', 'hammer', 'pliers', 'screwdriver', 'wrench']
+        self.coco_classes_ = ['drill', 'hammer', 'pliers', 'screwdriver', 'wrench']
         # self.dictionary_ = {'дрель':'drill', 'молоток':'hammer', 'плоскогубцы':'pliers', 'отвёртка':'screwdriver', 'гаечный':'wrench'}
 
     # ==============================================================================
@@ -244,11 +244,11 @@ class ManipulatorControl:
                     dy = 0
                 if (abs(dx) <= 0.003) and (abs(dy) <= 0.003):
                     self.N_ += 1
-                    if self.N_ == 7:
+                    if self.N_ >= 7:
                         self.mode_ = 2
 
-                manipulator_position[1] += dx
-                manipulator_position[2] += dy
+                manipulator_position[1] -= dx
+                manipulator_position[2] -= dy
 
                 # ====================================================================
 
@@ -272,7 +272,7 @@ class ManipulatorControl:
             d = (self.initial_height - self.final_height)/30
             manipulator_position[3] -= d
             time.sleep(5/1000)
-            if manipulator_position[3] >= self.final_height:
+            if manipulator_position[3] <= self.final_height:
                 self.mode_ = 3
 
         elif self.mode_ == 3:     # 3 - откат
@@ -282,9 +282,9 @@ class ManipulatorControl:
 
         elif self.mode_ == 4:     # 4 - движение в конец
 
-            manipulator_position = [manipulator_position[0], 0.0, -0.55, 0.63, 0, -1, 0,
+            manipulator_position = np.array([manipulator_position[0], 0.0, -0.55, 0.63, 0, -1, 0,
                                                                                 0, 0, -1,
-                                                                                1, 0, 0]
+                                                                                1, 0, 0])
             time.sleep(3)
             self.mode_ = 5
 
@@ -297,9 +297,12 @@ class ManipulatorControl:
 
     def loop(self, image, command, manipulator_position):
 
+        print("Mode: ", self.mode_)
+
         if command >= 0 and command <= 4:
             self.current_key_ = command
-            self.mode_ = 1
+            if self.mode_ == 0:
+                self.mode_ = 1
             manipulator_position = self.action(image, manipulator_position)
 
         elif command == 5:

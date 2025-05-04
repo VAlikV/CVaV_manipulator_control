@@ -4,15 +4,19 @@ import threading
 import socket
 from collections import OrderedDict
 import time
+import numpy as np
 
 from classes import ManipulatorControl, VoiceProcess, CameraProcess, UDPSender
 
 # ==============================================================================
 # ==============================================================================
 
-position = [0, 0.55, 0.0, 0.63, 1.0, 0.0, 0.0,
-                                0.0, -1.0, 0.0,
-                                0.0, 0.0, -1.0]
+position = np.array([0, 0.55, 0.0, 0.63, 1.0, 0.0, 0.0,
+                                        0.0, -1.0, 0.0,
+                                        0.0, 0.0, -1.0])
+old_position = position.copy()
+eps = np.array([0.00001, 0.00001, 0.00001])
+
 msg_queue = queue.Queue()
 
 command = 1
@@ -55,10 +59,14 @@ while cap.isOpened():
     if not msg_queue.empty():
         command = msg_queue.get_nowait()
 
+    print("Command id: ", command)
+
     position = control.loop(img, command, position)
+    
+    if np.abs(position[1:4] - old_position[1:4]).any() >= eps.any():
+        position[0] += 1
+        if position[0] == 1e6 + 1:
+            position[0] = 0
 
-    position[0] += 1
-    if position[0] == 1e6 + 1:
-        position[0] = 0
-
-    udp.sendMessage("192.168.1.3", 8082, position)
+        udp.sendMessage("192.168.1.3", 8082, position)
+        old_position = position.copy()
