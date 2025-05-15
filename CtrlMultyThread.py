@@ -19,7 +19,7 @@ eps = np.array([0.00001, 0.00001, 0.00001])
 
 msg_queue = queue.Queue()
 
-command = 1
+command = 3
 msg_queue.put(command)
 
 control = ManipulatorControl()

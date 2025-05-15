@@ -245,6 +245,7 @@ class ManipulatorControl:
                 if (abs(dx) <= 0.003) and (abs(dy) <= 0.003):
                     self.N_ += 1
                     if self.N_ >= 7:
+                        # pass
                         self.mode_ = 2
 
                 manipulator_position[1] -= dx
