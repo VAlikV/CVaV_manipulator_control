@@ -12,10 +12,16 @@ from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
 from sklearn.decomposition import PCA
 import socket
 from collections import OrderedDict
+import time
 
 
 class VoiceProcess:
     def __init__(self, model_path):
+
+        self.commands_ = ['дрель', 'молоток', 'плоскогубцы', 'отвёртка', 'гаечный', 'спасибо', 'стоп']
+
+        self.morph_ = pymorphy3.MorphAnalyzer(lang='ru')
+
         if not os.path.exists(model_path):
             print("Ошибка: Указанная модель не найдена!")
             exit(1)
@@ -43,17 +49,24 @@ class VoiceProcess:
                 if self.recognizer_.AcceptWaveform(data):
                     result = json.loads(self.recognizer_.Result())
                     temp = result["text"]
-                    msg_queue.put(temp)
+                    # msg_queue.put(temp)
                     print(f"Распознанный текст: {temp}")
+                    words = temp.split()
+                    lemmatized_words = [self.morph_.parse(word)[0].normal_form for word in words]
+                    print(f"После лемматизации: {lemmatized_words}")
+
+                    for key in self.commands_:
+                        if key in lemmatized_words:
+                            current_key = self.commands_.index(key)
+                            msg_queue.put(current_key)
 
 # ==============================================================================
 # ==============================================================================
 # ==============================================================================
 
-class VideoProcess:
+class ManipulatorControl:
     def loadModels(self):
         self.model_yolo_ = YOLO("models/runs/detect/train15/weights/best.pt")
-        self.morph_ = pymorphy3.MorphAnalyzer(lang='ru')
 
         self.model_seg_ = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
         self.processor_seg_ = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
@@ -61,33 +74,30 @@ class VideoProcess:
         self.device_ = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_seg_.to(self.device_)
 
-# ==============================================================================
+    # ==============================================================================
 
     def __init__(self):
         self.loadModels()
 
-        self.delta_ = [0.0, 0.0]
-        self.position_done_ = False
-        self.N = 0
+        # self.position_done_ = False
+        self.N_ = 0
+
+        self.mode_ = 0
+        # 0 - ожидание команды
+        # 1 - наведение
+        # 2 - движение вниз
+        # 3 - откат
+        # 4 - движение в конец
+        # 5 - ожидание начала
+
+        self.initial_height = 0.63
+        self.final_height = 0.29
 
         self.current_key_ = 3
         self.coco_classes_ = ['drill', 'hammer', 'pliers', 'screwdriver', 'wrench']
-        self.dictionary_ = {'дрель':'drill', 'молоток':'hammer', 'плоскогубцы':'pliers', 'отвёртка':'screwdriver', 'гаечный':'wrench'}
-        
-# ==============================================================================
+        # self.dictionary_ = {'дрель':'drill', 'молоток':'hammer', 'плоскогубцы':'pliers', 'отвёртка':'screwdriver', 'гаечный':'wrench'}
 
-    def textMessageProcces(self, text):
-        words = text.split()
-        lemmatized_words = [self.morph_.parse(word)[0].normal_form for word in words]
-        print(f"После лемматизации: {lemmatized_words}")
-
-        for key in self.dictionary_.keys():
-            if key in lemmatized_words:
-                v = self.dictionary_[key]
-                current_key = self.coco_classes_.index(v)
-                return current_key
-
-# ==============================================================================
+    # ==============================================================================
 
     def detection(self, image, current_key, imgsz=640, conf=0.5, iou=0.5):
         max_conf = 0
@@ -120,7 +130,7 @@ class VideoProcess:
                 cv2.putText(image2, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         return image2, detected, fragment, bb_point
 
-# ==============================================================================
+    # ==============================================================================
 
     def segmentation(self, image):
 
@@ -145,7 +155,7 @@ class VideoProcess:
         
         return mask
 
-# ==============================================================================
+    # ==============================================================================
 
     def calcPCA(self, mask):
         points = []
@@ -182,7 +192,7 @@ class VideoProcess:
 
         return center, pt1, pt2, grasp_pt1, grasp_pt2
     
-# ==============================================================================
+    # ==============================================================================
 
     def control(self, point, d_vert = 960, d_hor = 1280):
 
@@ -203,58 +213,105 @@ class VideoProcess:
 
         return x_task_space_delta, y_task_space_delta
 
-# ==============================================================================
+    # ==============================================================================
 
-    def loop(self, image, text):
-        current_key = self.textMessageProcces(text)
+    def action(self, image, manipulator_position):
+        if self.mode_ == 0:       # 0 - ожидание команды  
+            pass
 
-        if current_key != None:
-            self.current_key_ = current_key
+        elif self.mode_ == 1:     # 1 - наведение
+            image2, detected, fragment, box_point = self.detection(image, self.current_key_, imgsz=640, conf=0.5, iou=0.5)
 
-        image2, detected, fragment, bb_point = self.detection(image, self.current_key_, imgsz=640, conf=0.5, iou=0.5)
+            # ====================================================================
 
-        if detected:
-            mask = self.segmentation(fragment)
+            if detected:    # Если задетектировано
+                mask = self.segmentation(fragment)
+                center, pt1, pt2, grasp_pt1, grasp_pt2 = self.calcPCA(mask)
 
-            center, pt1, pt2, grasp_pt1, grasp_pt2 = self.calcPCA(mask)
+                # ====================================================================
 
-            Px = fragment.shape[0] / mask.shape[0]
-            Py = fragment.shape[1] / mask.shape[1]
+                Px = fragment.shape[0] / mask.shape[0]
+                Py = fragment.shape[1] / mask.shape[1]
+                point = (box_point[0] + Py*center[1], box_point[1] + Px*center[0])
 
-            # point = (bb_point[0]+center[1], bb_point[1]+center[0])
-            point = (bb_point[0] + Py*center[1], bb_point[1] + Px*center[0])
+                # ====================================================================
 
-            dx, dy = self.control(point, d_vert = 360, d_hor = 640)
+                dx, dy = self.control(point, d_vert = 360, d_hor = 640)
 
-            if abs(dx) <= 0.003:
-                dx = 0
+                if abs(dx) <= 0.003:
+                    dx = 0
+                if abs(dy) <= 0.003:
+                    dy = 0
+                if (abs(dx) <= 0.003) and (abs(dy) <= 0.003):
+                    self.N_ += 1
+                    if self.N_ >= 7:
+                        # pass
+                        self.mode_ = 2
 
-            if abs(dy) <= 0.003:
-                dy = 0
+                manipulator_position[1] -= dx
+                manipulator_position[2] -= dy
 
-            if (abs(dx) <= 0.003) and (abs(dy) <= 0.003):
-                self.N += 1
-                if self.N == 7:
-                    self.position_done_ = True
-            # else:
-                # self.position_done_ = True
+                # ====================================================================
 
-            self.delta_ = [dx, dy]
+                mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+                cv2.arrowedLine(mask, pt1, pt2, (0, 0, 255), 2)
+                cv2.line(mask, grasp_pt1, grasp_pt2, (0, 255, 0), 2)
 
-            mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-            cv2.arrowedLine(mask, pt1, pt2, (0, 0, 255), 2)
-            cv2.line(mask, grasp_pt1, grasp_pt2, (0, 255, 0), 2)
+                cv2.circle(image2, (int(point[0]), int(point[1])), 3, (0, 255, 0), 2)
 
-            cv2.circle(image2, (int(point[0]), int(point[1])), 3, (0, 255, 0), 2)
+                cv2.imshow("Mask", mask)
+                cv2.imshow("Fragment", fragment)
 
-            cv2.imshow("Mask", mask)
-            cv2.imshow("Fragment", fragment)
-        else:
-            self.delta_ = [0, 0]
+                # ====================================================================
 
-        cv2.imshow("Detection", image2)
+            cv2.imshow("Detection", image2)
+            cv2.waitKey(1) 
 
-        cv2.waitKey(1) 
+            return manipulator_position
+
+        elif self.mode_ == 2:     # 2 - движение вниз
+            d = (self.initial_height - self.final_height)/30
+            manipulator_position[3] -= d
+            time.sleep(5/1000)
+            if manipulator_position[3] <= self.final_height:
+                self.mode_ = 3
+
+        elif self.mode_ == 3:     # 3 - откат
+            manipulator_position[3] += 0.05
+            time.sleep(5/1000)
+            self.mode_ = 4
+
+        elif self.mode_ == 4:     # 4 - движение в конец
+
+            manipulator_position = np.array([manipulator_position[0], 0.0, -0.55, 0.63, 0, -1, 0,
+                                                                                0, 0, -1,
+                                                                                1, 0, 0])
+            time.sleep(3)
+            self.mode_ = 5
+
+        elif self.mode_ == 5:     # 5 - ожидание начала
+            pass
+        
+        return manipulator_position
+
+    # ==============================================================================
+
+    def loop(self, image, command, manipulator_position):
+
+        print("Mode: ", self.mode_)
+
+        if command >= 0 and command <= 4:
+            self.current_key_ = command
+            if self.mode_ == 0:
+                self.mode_ = 1
+            manipulator_position = self.action(image, manipulator_position)
+
+        elif command == 5:
+            pass
+        elif command == 6:
+            pass
+
+        return manipulator_position
 
 # ==============================================================================
 # ==============================================================================
@@ -327,3 +384,4 @@ class UDPSender:
         print(msg)
         b = msg.encode('utf-8')
         self.sock_.sendto(b, (ip, port))
+
